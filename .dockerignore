@@ -1,0 +1,19 @@
+# 构建产物与本地数据
+data/
+*.db
+*.db-wal
+*.db-shm
+master.key
+mrs-server
+mirasim2api
+
+# 版本控制与编辑器
+.git/
+.gitignore
+.DS_Store
+*.swp
+
+# 文档（构建不需要）
+docs/
+TODO.md
+README.md

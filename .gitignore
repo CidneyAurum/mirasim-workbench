@@ -1,0 +1,21 @@
+# 运行时数据（含 SQLite 与加密密钥，切勿入库）
+data/
+master.key
+*.db
+*.db-wal
+*.db-shm
+
+# 二进制
+mrs-server
+mirasim2api
+cmd/server/server
+
+# 系统/编辑器
+.DS_Store
+*.swp
+*.swo
+Thumbs.db
+
+# 测试与临时
+*.out
+/tmp/

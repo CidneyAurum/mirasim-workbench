@@ -1,0 +1,31 @@
+services:
+  mirasim2api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: mirasim2api:latest
+    container_name: mirasim2api
+    restart: unless-stopped
+    ports:
+      # 默认只绑本机：管理后台免密模式仅限 loopback。对外暴露前务必设 ADMIN_PASSWORD。
+      - "127.0.0.1:8787:8787"
+    environment:
+      # 管理密码留空 = 免密（仅本机可用）。对外部署必须设置。
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-}"
+      # 强烈建议显式提供 64 位 hex 的 MASTER_KEY；不设则首次启动自动生成到 /app/data/master.key。
+      MASTER_KEY: "${MASTER_KEY:-}"
+      GATEWAY_KEY_REQUIRED: "${GATEWAY_KEY_REQUIRED:-true}"
+      CLAUDE_CLOAK_MODE: "${CLAUDE_CLOAK_MODE:-relaxed}"
+      # 出站代理（可选）：如 http://host.docker.internal:7890
+      UPSTREAM_PROXY: "${UPSTREAM_PROXY:-}"
+      # 上游覆盖（一般不用改）
+      RELAY_URL: "${RELAY_URL:-https://relay.mirasim.ai}"
+      AUTH_URL: "${AUTH_URL:-https://auth.mirasim.ai}"
+      MIRASIM_CLIENT_VERSION: "${MIRASIM_CLIENT_VERSION:-0.0.322}"
+      CAPACITY_RETRIES: "${CAPACITY_RETRIES:-2}"
+      CAPACITY_BACKOFF_MS: "${CAPACITY_BACKOFF_MS:-1200}"
+    volumes:
+      - mirasim-data:/app/data
+
+volumes:
+  mirasim-data:

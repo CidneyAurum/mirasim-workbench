@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mirasim2api 管理后台</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<!-- 登录页 -->
+<div id="login-view" class="hidden">
+  <div class="login-card">
+    <h1>mirasim2api</h1>
+    <p class="muted">管理后台</p>
+    <form id="login-form">
+      <input type="password" id="login-password" placeholder="管理密码" autocomplete="current-password" autofocus>
+      <button type="submit" class="btn primary block">登录</button>
+    </form>
+    <p id="login-error" class="error"></p>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div id="app-view" class="hidden">
+  <header class="topbar">
+    <div class="brand">mirasim2api</div>
+    <nav class="tabs">
+      <button class="tab active" data-tab="dashboard">仪表盘</button>
+      <button class="tab" data-tab="accounts">账号池</button>
+      <button class="tab" data-tab="keys">API Keys</button>
+      <button class="tab" data-tab="usage">用量日志</button>
+      <button class="tab" data-tab="settings">设置</button>
+    </nav>
+    <div class="topbar-right">
+      <span id="auth-badge" class="badge"></span>
+      <button id="logout-btn" class="btn ghost">退出</button>
+    </div>
+  </header>
+
+  <main class="content">
+    <!-- 仪表盘 -->
+    <section id="tab-dashboard" class="tabpane">
+      <div class="cards" id="dash-cards"></div>
+      <div class="panel">
+        <h2>近 7 天模型用量 Top</h2>
+        <table class="table" id="dash-top-models">
+          <thead><tr><th>模型</th><th>请求</th><th>输入</th><th>输出</th><th>缓存</th><th>费用</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 账号池 -->
+    <section id="tab-accounts" class="tabpane hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>账号池</h2>
+          <div>
+            <button class="btn" id="acct-add-oauth">+ OAuth 登录</button>
+            <button class="btn" id="acct-add-email">+ 邮箱验证码</button>
+            <button class="btn" id="acct-add-token">+ 粘贴 Token</button>
+          </div>
+        </div>
+        <table class="table" id="accounts-table">
+          <thead><tr>
+            <th>邮箱</th><th>套餐</th><th>状态</th><th>已用额度</th><th>并发</th><th>失败</th><th>最近错误</th><th>操作</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- API Keys -->
+    <section id="tab-keys" class="tabpane hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>API Keys</h2>
+          <button class="btn primary" id="key-create-btn">+ 新建 Key</button>
+        </div>
+        <table class="table" id="keys-table">
+          <thead><tr>
+            <th>名称</th><th>Key</th><th>状态</th><th>并发</th><th>RPM</th><th>模型白名单</th><th>累计费用</th><th>操作</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- 用量日志 -->
+    <section id="tab-usage" class="tabpane hidden">
+      <div class="panel">
+        <div class="panel-head">
+          <h2>用量日志</h2>
+          <div class="filters">
+            <input id="usage-model" placeholder="模型过滤" size="12">
+            <select id="usage-since">
+              <option value="1h">近 1 小时</option>
+              <option value="24h" selected>近 24 小时</option>
+              <option value="168h">近 7 天</option>
+              <option value="">全部</option>
+            </select>
+            <button class="btn" id="usage-reload">刷新</button>
+          </div>
+        </div>
+        <table class="table" id="usage-table">
+          <thead><tr>
+            <th>时间</th><th>模型</th><th>端点</th><th>输入</th><th>输出</th><th>缓存</th><th>费用</th><th>状态</th><th>耗时</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+        <div class="pager">
+          <button class="btn ghost" id="usage-prev">上一页</button>
+          <span id="usage-page-info" class="muted"></span>
+          <button class="btn ghost" id="usage-next">下一页</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 设置 -->
+    <section id="tab-settings" class="tabpane hidden">
+      <div class="panel">
+        <div class="panel-head"><h2>运行时设置</h2><button class="btn primary" id="settings-save">保存</button></div>
+        <p class="muted">改动即刻生效（数据库优先，环境变量兜底）。留空表示删除该项、回落到环境变量/默认值。</p>
+        <div id="settings-list"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- 通用弹窗 -->
+<div id="modal-mask" class="hidden">
+  <div class="modal">
+    <div class="modal-head"><span id="modal-title"></span><button class="btn ghost" id="modal-close">✕</button></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toast" class="hidden"></div>
+<script src="app.js"></script>
+</body>
+</html>
