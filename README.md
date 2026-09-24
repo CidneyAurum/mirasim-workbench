@@ -3,6 +3,8 @@
 Windows x64 本地可视化工作台，基于 [Essaim8/mirasim2api](https://github.com/Essaim8/mirasim2api)。
 深色独立窗口、账号池、API Key、周额度、流式调试与网关管理，解压后双击启动。
 
+📦 **移植到自己电脑**：完整部署、源码构建、Docker 部署与数据迁移说明见 [移植与部署指南](MIGRATION.md)。
+
 > 发布包不包含任何账号、令牌、数据库、日志或个人配置。上游未声明开源许可证，使用与再分发前请阅读 [来源与许可说明](THIRD_PARTY_NOTICES.md)。
 
 ## 在自己的电脑上部署
