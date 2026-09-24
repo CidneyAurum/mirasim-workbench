@@ -105,10 +105,12 @@ func NewHandler(d Deps) http.Handler {
 }
 
 // staticModels 是池无可用账号时 /v1/models 的内置清单。
+// 模型 ID 与官方客户端目录一致：deepseek-v4-flash 是 deepseek-flash 的历史
+// 别名，官方客户端会归并掉它，这里同样只列规范 ID（请求侧仍按前缀转发）。
 var staticModels = []string{
 	"claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-haiku-4-5",
 	"claude-opus-4-8", "gpt-6-astra", "kimi-k3", "deepseek-flash",
-	"deepseek-v4-flash", "glm-5.3-flash",
+	"glm-5.3-flash",
 }
 
 // handleModel 返回某端点的处理函数：读体 → 规范化 → 家族路由校验 →

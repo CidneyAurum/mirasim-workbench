@@ -38,7 +38,7 @@ var defaultPrices = map[string]ModelPrice{
 	"gpt-6-astra":       {}, // 未定价
 	"kimi-k3":           {}, // 未定价
 	"deepseek-flash":    {}, // 未定价
-	"deepseek-v4-flash": {}, // 未定价
+	"deepseek-v4-flash": {}, // 未定价；deepseek-flash 的历史别名，仅留计费口径
 	"glm-5.3-flash":     {}, // 未定价
 }
 

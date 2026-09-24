@@ -4,9 +4,16 @@ import {builtinModels,endpointFor,makePayload,eventText,consumeSSE} from './prot
 
 test('Kimi / DeepSeek are first and use Chat Completions',()=>{
   assert.deepEqual(builtinModels.slice(0,2),['kimi-k3','deepseek-flash']);
-  for(const model of ['kimi-k3','deepseek-flash','deepseek-v4-flash','glm-5.3-flash']) {
+  for(const model of ['kimi-k3','deepseek-flash','glm-5.3-flash']) {
     assert.equal(endpointFor(model),'chat/completions');
     assert.equal(endpointFor(model,'messages'),'messages');
+  }
+});
+test('legacy DeepSeek alias routes but is not advertised',()=>{
+  assert.ok(!builtinModels.includes('deepseek-v4-flash'));
+  assert.ok(!builtinModels.includes('deepseek-v4-flash-vision-exp'));
+  for(const model of ['deepseek-v4-flash','deepseek-v4-flash-vision-exp','mirasim/deepseek-flash']) {
+    assert.equal(endpointFor(model),'chat/completions');
   }
 });
 test('Claude and GPT route only to supported endpoints',()=>{

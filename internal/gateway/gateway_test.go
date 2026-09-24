@@ -628,7 +628,7 @@ func TestModelsStaticFallback(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
 		t.Fatal(err)
 	}
-	if m.Object != "list" || len(m.Data) != 10 {
+	if m.Object != "list" || len(m.Data) != len(staticModels) {
 		t.Fatalf("静态清单不符: %+v", m)
 	}
 	ids := map[string]bool{}

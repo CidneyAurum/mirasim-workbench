@@ -1,5 +1,7 @@
 // The model families and endpoints match upstream docs/PROTOCOL.md.
-export const builtinModels = ['kimi-k3','deepseek-flash','deepseek-v4-flash','glm-5.3-flash','claude-opus-5','claude-sonnet-5','claude-fable-5','claude-haiku-4-5','claude-opus-4-8','gpt-6-astra'];
+// deepseek-v4-flash / deepseek-v4-flash-vision-exp 是 deepseek-flash 的历史别名，
+// 官方客户端把它们归并到 deepseek-flash，参考清单不再单独列出（请求仍可按别名发送）。
+export const builtinModels = ['kimi-k3','deepseek-flash','glm-5.3-flash','claude-opus-5','claude-sonnet-5','claude-fable-5','claude-haiku-4-5','claude-opus-4-8','gpt-6-astra'];
 export function endpointFor(model, selected='auto') {
   model = model.replace(/^mirasim\//,'');
   const required = model.startsWith('claude-') ? 'messages' : model.startsWith('gpt-') ? 'responses' : null;
