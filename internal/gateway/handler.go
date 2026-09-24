@@ -181,6 +181,15 @@ func (h *Handler) handleModels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = key
+	if allowed := h.pool.ModelAllowlist(); allowed != nil {
+		data := make([]map[string]any, 0, len(allowed))
+		for _, id := range allowed {
+			data = append(data, map[string]any{"id": id, "object": "model", "created": 0, "owned_by": "mirasim"})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = encodeJSON(w, map[string]any{"object": "list", "data": data, "source": "plan:go"})
+		return
+	}
 	if entry := h.pool.Pick(nil, ""); entry != nil {
 		if req, err := entry.Client.SignedRequest(r.Context(), http.MethodGet, "/v1/models", nil); err == nil {
 			if resp, err := h.http.Do(req); err == nil {

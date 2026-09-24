@@ -19,3 +19,30 @@ Thumbs.db
 # 测试与临时
 *.out
 /tmp/
+
+# Local Windows workbench
+*.exe
+*.syso
+logs/
+workbench.ico
+workbench/web/logo.png
+workbench/web/logo.ico
+tools/.cache/
+
+# Never publish local credentials, archives, or machine-specific state.
+dist/
+backups/
+auths/
+.tools/
+.gocache/
+.env
+.env.*
+!.env.example
+*.dpapi
+*.key
+*.pem
+*.pfx
+*.log
+*.zip
+*.bak
+*.lnk

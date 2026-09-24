@@ -40,14 +40,15 @@ type flowStore struct {
 }
 
 type oauthFlow struct {
-	id        string
-	provider  string
-	mode      string // "auto"（loopback 独占端口）/ "manual"（粘贴回调链接）
-	authURL   string
-	expiresAt time.Time
-	listener  net.Listener // 仅 auto
-	srv       *http.Server
-	result    *flowResult
+	id         string
+	provider   string
+	mode       string // "auto"（loopback 独占端口）/ "manual"（粘贴回调链接）
+	authURL    string
+	expiresAt  time.Time
+	listener   net.Listener // 仅 auto
+	srv        *http.Server
+	result     *flowResult
+	callbackMu sync.Mutex // serialize duplicate browser callbacks
 }
 
 func newFlowStore() *flowStore {
@@ -86,14 +87,27 @@ func (fs *flowStore) put(f *oauthFlow) {
 	fs.mu.Unlock()
 }
 
-// finish 标记流程完成并释放监听器（auto 模式回调成功后调用）。
+// finish only records the result. Do NOT close the HTTP server from its own
+// callback: doing so destroys the socket before the browser receives the page.
+// Keep the listener until expiry so Edge retries/refreshes can read the result.
 func (fs *flowStore) finish(id string, res *flowResult) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	if f, ok := fs.flows[id]; ok {
-		f.result = res
-		f.close()
+		if f.result == nil {
+			f.result = res
+		}
 	}
+}
+
+func (fs *flowStore) lookup(id string) *oauthFlow {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f := fs.flows[id]
+	if f == nil || time.Now().After(f.expiresAt) {
+		return nil
+	}
+	return f
 }
 
 // get 取流程结果：found=false 表示不存在或已过期。pending 时 result=nil。
@@ -183,9 +197,11 @@ func (h *Handler) handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 		mux := http.NewServeMux()
 		mux.HandleFunc("/callback", h.serveOAuthCallback(flow.id))
 		flow.srv = &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-		go func() { _ = flow.srv.Serve(listener) }()
 	}
 	h.flows.put(flow)
+	if listener != nil {
+		go func() { _ = flow.srv.Serve(listener) }()
+	}
 
 	writeOK(w, map[string]any{
 		"flow_id":      flow.id,
@@ -198,27 +214,103 @@ func (h *Handler) handleOAuthStart(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// serveOAuthCallback 处理 loopback 回调：取 refresh_token 参数验收入池。
+// serveOAuthCallback handles real loopback HTTP requests, including fragment
+// callbacks bridged by the local page. Tokens never appear in the HTML/logs.
 func (h *Handler) serveOAuthCallback(flowID string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		flow := h.flows.lookup(flowID)
+		if flow == nil {
+			http.Error(w, "登录已过期，请回工作台重新发起授权。", http.StatusGone)
+			return
+		}
+		if r.Method != "GET" && r.Method != "POST" {
+			w.Header().Set("Allow", "GET, POST")
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if flow.listener == nil || r.Host != flow.listener.Addr().String() {
+			http.Error(w, "Invalid callback host", http.StatusForbidden)
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
+			http.Error(w, "Invalid callback origin", http.StatusForbidden)
+			return
+		}
+		flow.callbackMu.Lock()
+		defer flow.callbackMu.Unlock()
+		res, found := h.flows.get(flowID)
+		if !found {
+			http.Error(w, "登录已过期", http.StatusGone)
+			return
+		}
+		if res != nil {
+			h.writeCallbackResult(w, r, flow, res)
+			return
+		}
 		token := r.URL.Query().Get("refresh_token")
-		var res *flowResult
+		if r.Method == "POST" {
+			if r.Header.Get("X-Mirasim-Callback") != flowID {
+				http.Error(w, "Invalid callback request", http.StatusForbidden)
+				return
+			}
+			var form struct {
+				RefreshToken string `json:"refresh_token"`
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, maxAdminBody)
+			if json.NewDecoder(r.Body).Decode(&form) != nil {
+				writeErr(w, 400, "回调数据格式错误")
+				return
+			}
+			token = form.RefreshToken
+		}
 		if token == "" {
-			res = &flowResult{done: true, errMsg: "回调链接缺少 refresh_token 参数"}
-		} else if acc, info, err := h.addAccount(token, h.flowProvider(flowID), ""); err != nil {
+			// Browser preflight/probe and #fragment navigation contain no token
+			// in the HTTP query. Do not consume the flow or close the listener.
+			if r.Method == "POST" {
+				writeErr(w, 400, "回调中缺少 Refresh Token，请重新授权或粘贴完整回调链接")
+				return
+			}
+			h.writeCallbackPage(w, flow, "等待授权结果", "请完成浏览器授权。若已授权，请回到工作台粘贴完整回调链接以恢复。", true)
+			return
+		}
+		if acc, _, err := h.addAccount(token, flow.provider, ""); err != nil {
 			res = &flowResult{done: true, errMsg: err.Error()}
 		} else {
 			res = &flowResult{done: true, account: &accountBrief{ID: acc.ID, Email: acc.Email, Name: acc.Name, Provider: acc.Provider}}
-			h.logger.Info("oauth account added", "email", acc.Email, "provider", acc.Provider, "plan", info.Plan)
+			h.logger.Info("oauth account added", "provider", acc.Provider, "account_id", acc.ID)
 		}
 		h.flows.finish(flowID, res)
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		h.writeCallbackResult(w, r, flow, res)
+	}
+}
+
+func (h *Handler) writeCallbackResult(w http.ResponseWriter, r *http.Request, flow *oauthFlow, res *flowResult) {
+	if r.Method == "POST" {
+		w.Header().Set("Cache-Control", "no-store")
 		if res.errMsg != "" {
-			fmt.Fprintf(w, "<html><body style='font-family:sans-serif;padding:2em'><h2>登录失败</h2><p>%s</p><p>请回到管理后台重新发起。</p></body></html>", htmlEscape(res.errMsg))
+			writeErr(w, 400, res.errMsg)
 			return
 		}
-		fmt.Fprint(w, "<html><body style='font-family:sans-serif;padding:2em'><h2>登录成功</h2><p>账号已加入账号池，可以关闭本页并回到管理后台。</p></body></html>")
+		writeOK(w, map[string]string{"status": "done"})
+		return
 	}
+	if res.errMsg != "" {
+		h.writeCallbackPage(w, flow, "登录失败", res.errMsg, false)
+		return
+	}
+	h.writeCallbackPage(w, flow, "登录成功", "账号已加入 Mirasim 账号池。可以关闭本页，回到工作台查看账号和额度。", false)
+}
+
+// The page reads #fragment locally, posts ONLY the refresh token to its own
+// loopback origin, then erases credentials from the visible URL and history.
+func (h *Handler) writeCallbackPage(w http.ResponseWriter, flow *oauthFlow, title, message string, bridge bool) {
+	nonce := randHex(16)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'nonce-"+nonce+"'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+	fmt.Fprintf(w, `<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Mirasim · %s</title><style>body{margin:0;background:#0c131d;color:#eaf1fa;font:16px/1.8 system-ui,'Microsoft YaHei',sans-serif;display:grid;place-items:center;min-height:100vh}main{max-width:560px;margin:24px;padding:40px;background:#182330;border:1px solid #64d8c133;border-radius:18px}h1{color:#64d8c1;font-size:26px}p{color:#b6c5d7;overflow-wrap:anywhere}small{color:#8496ae}</style><main><small>MIRASIM LOCAL WORKBENCH</small><h1 id="status">%s</h1><p id="message">%s</p><small>凭据只在本机处理，请勿分享授权回调链接。</small></main><script nonce="%s">(async()=>{const fragment=new URLSearchParams(location.hash.slice(1));history.replaceState(null,'',location.pathname);if(!%t)return;const token=fragment.get('refresh_token');if(!token)return;const status=document.getElementById('status'),message=document.getElementById('message');status.textContent='正在接收授权';try{const response=await fetch(location.pathname,{method:'POST',headers:{'Content-Type':'application/json','X-Mirasim-Callback':'%s'},body:JSON.stringify({refresh_token:token})});const result=await response.json();if(!response.ok||result.status!=='done')throw new Error(result.error||'授权回调未完成');status.textContent='登录成功';message.textContent='账号已加入 Mirasim 账号池。可以关闭本页，回到工作台查看账号和额度。';document.title='Mirasim · 登录成功';}catch(error){status.textContent='登录失败';message.textContent=error.message;}})();</script></html>`, htmlEscape(title), htmlEscape(title), htmlEscape(message), nonce, bridge, flow.id)
 }
 
 // flowProvider 取流程发起时的 provider（回调时复用）。
@@ -301,7 +393,10 @@ func (h *Handler) finishWithToken(w http.ResponseWriter, token, provider string)
 func extractRefreshToken(raw string) (string, error) {
 	raw = strings.TrimSpace(raw)
 	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
+	if err != nil {
+		return "", errors.New("无法解析回调链接，请完整复制浏览器地址栏内容")
+	}
+	if u.Host == "" {
 		// 粘贴的可能只是 "?refresh_token=..." 或 "refresh_token=..." 参数串
 		if q := u.Query().Get("refresh_token"); q != "" {
 			return q, nil

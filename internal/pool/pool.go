@@ -31,8 +31,31 @@ const (
 // Window 是 /v1/limits 返回的一个配额窗口。
 // Used/Budget 用 float64：上游实测会返回小数（如 used=150.5739624）。
 type Window struct {
-	Used   float64 `json:"used"`
-	Budget float64 `json:"budget"`
+	Name        string          `json:"name"`
+	Used        float64         `json:"used"`
+	Budget      float64         `json:"budget"`
+	ResetAt     json.RawMessage `json:"reset_at"`
+	ModelScoped bool            `json:"model_scoped,omitempty"`
+}
+
+// A missing amount is not zero, and a missing cap is not "unlimited".
+func (w *Window) UnmarshalJSON(data []byte) error {
+	type plain Window
+	var value struct {
+		Name        string          `json:"name"`
+		Used        *float64        `json:"used"`
+		Budget      *float64        `json:"budget"`
+		ResetAt     json.RawMessage `json:"reset_at"`
+		ModelScoped bool            `json:"model_scoped"`
+	}
+	if err := json.Unmarshal(data, &value); err != nil {
+		return err
+	}
+	if value.Used == nil || value.Budget == nil || *value.Used < 0 || *value.Budget < 0 {
+		return errors.New("pool: quota window has missing or invalid amounts")
+	}
+	*w = Window{Name: value.Name, Used: *value.Used, Budget: *value.Budget, ResetAt: value.ResetAt, ModelScoped: value.ModelScoped}
+	return nil
 }
 
 // Limits 是账号配额快照。
@@ -53,8 +76,7 @@ func (l *Limits) WorstUsedRatio() float64 {
 		switch {
 		case w.Budget > 0:
 			r = w.Used / w.Budget
-		case w.Used > 0:
-			r = 1
+			// Official Mirasim treats budget=0 as unlimited, not exhausted.
 		}
 		if r > worst {
 			worst = r
@@ -104,6 +126,7 @@ type Entry struct {
 	cooldownUntil time.Time
 	limits        *Limits
 	lastError     string // 最近一次失败的摘要（供管理端展示）
+	limitsError   string
 }
 
 // TryAcquire 尝试占一个并发槽；max<=0 表示不限。
@@ -405,6 +428,9 @@ func (p *Pool) RefreshLimits(ctx context.Context, e *Entry, force bool) error {
 	}
 	limits, err := e.Fetcher.FetchLimits(ctx)
 	if err != nil {
+		e.mu.Lock()
+		e.limitsError = errSummary(err)
+		e.mu.Unlock()
 		return err
 	}
 	if limits == nil {
@@ -413,6 +439,7 @@ func (p *Pool) RefreshLimits(ctx context.Context, e *Entry, force bool) error {
 	limits.FetchedAt = time.Now()
 	e.mu.Lock()
 	e.limits = limits
+	e.limitsError = ""
 	e.mu.Unlock()
 	return nil
 }
@@ -421,36 +448,46 @@ func (p *Pool) RefreshLimits(ctx context.Context, e *Entry, force bool) error {
 func (p *Pool) StartLimitsLoop(ctx context.Context) {
 	ticker := time.NewTicker(limitsLoopPeriod)
 	defer ticker.Stop()
+	refresh := func() {
+		for _, e := range p.Entries() {
+			if ctx.Err() != nil {
+				return
+			}
+			ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
+			_ = p.RefreshLimits(ctx2, e, false)
+			cancel()
+		}
+	}
+	refresh() // populate quota immediately after a gateway restart
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			for _, e := range p.Entries() {
-				ctx2, cancel := context.WithTimeout(ctx, 30*time.Second)
-				_ = p.RefreshLimits(ctx2, e, false)
-				cancel()
-			}
+			refresh()
 		}
 	}
 }
 
 // AccountStat 供管理端展示。
 type AccountStat struct {
-	ID             string
-	Email          string
-	Name           string
-	Provider       string
-	Enabled        bool
-	Inflight       int64
-	Failures       int
-	CooldownUntil  time.Time
-	WorstUsedRatio float64
-	Suspended      bool
-	LimitsFetched  bool
-	LastError      string // 最近一次失败摘要（成功清零）
-	Plan           string
-	PlanExp        int64
+	ID              string
+	Email           string
+	Name            string
+	Provider        string
+	Enabled         bool
+	Inflight        int64
+	Failures        int
+	CooldownUntil   time.Time
+	WorstUsedRatio  float64
+	Suspended       bool
+	LimitsFetched   bool
+	LimitsWindows   []Window
+	LimitsFetchedAt time.Time
+	LimitsError     string
+	LastError       string // 最近一次失败摘要（成功清零）
+	Plan            string
+	PlanExp         int64
 }
 
 // Stats 返回全部账号的运行时状态（plan/plan_exp 从 refresh token JWT 本地解出）。
@@ -468,11 +505,14 @@ func (p *Pool) Stats() []*AccountStat {
 			Failures:      e.failures,
 			CooldownUntil: e.cooldownUntil,
 			LastError:     e.lastError,
+			LimitsError:   e.limitsError,
 		}
 		if e.limits != nil {
 			st.WorstUsedRatio = e.limits.WorstUsedRatio()
 			st.Suspended = e.limits.Suspended
 			st.LimitsFetched = true
+			st.LimitsWindows = append([]Window(nil), e.limits.Windows...)
+			st.LimitsFetchedAt = e.limits.FetchedAt
 		}
 		e.mu.Unlock()
 		if claims := mirasim.JWTClaims(e.Client.RefreshToken()); claims != nil {

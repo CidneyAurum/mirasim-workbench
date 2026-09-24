@@ -16,22 +16,27 @@ import (
 
 // accountView 是账号在管理 API 中的展示形态。
 type accountView struct {
-	ID              string  `json:"id"`
-	Email           string  `json:"email"`
-	Name            string  `json:"name"`
-	Provider        string  `json:"provider"`
-	Enabled         bool    `json:"enabled"`
-	Usable          bool    `json:"usable"`
-	Inflight        int64   `json:"inflight"`
-	Failures        int     `json:"failures"`
-	Cooldown        bool    `json:"cooldown"`
-	CooldownSeconds int64   `json:"cooldown_seconds"`
-	UsedRatio       float64 `json:"used_ratio"`
-	Suspended       bool    `json:"suspended"`
-	LimitsFetched   bool    `json:"limits_fetched"`
-	LastError       string  `json:"last_error"`
-	Plan            string  `json:"plan"`
-	PlanExp         int64   `json:"plan_exp"`
+	ID              string        `json:"id"`
+	Email           string        `json:"email"`
+	Name            string        `json:"name"`
+	Provider        string        `json:"provider"`
+	Enabled         bool          `json:"enabled"`
+	Usable          bool          `json:"usable"`
+	Inflight        int64         `json:"inflight"`
+	Failures        int           `json:"failures"`
+	Cooldown        bool          `json:"cooldown"`
+	CooldownSeconds int64         `json:"cooldown_seconds"`
+	UsedRatio       float64       `json:"used_ratio"`
+	Suspended       bool          `json:"suspended"`
+	LimitsFetched   bool          `json:"limits_fetched"`
+	LimitsWindows   []pool.Window `json:"quota_windows"`
+	LimitsFetchedAt int64         `json:"quota_fetched_at,omitempty"`
+	LimitsStale     bool          `json:"quota_stale"`
+	LimitsError     string        `json:"quota_error,omitempty"`
+	AllowedModels   []string      `json:"allowed_models,omitempty"`
+	LastError       string        `json:"last_error"`
+	Plan            string        `json:"plan"`
+	PlanExp         int64         `json:"plan_exp"`
 }
 
 func statToView(s *pool.AccountStat) accountView {
@@ -52,6 +57,16 @@ func statToView(s *pool.AccountStat) accountView {
 		LastError:     s.LastError,
 		Plan:          s.Plan,
 		PlanExp:       s.PlanExp,
+		LimitsWindows: s.LimitsWindows,
+		LimitsError:   s.LimitsError,
+		AllowedModels: pool.ModelsForPlan(s.Plan),
+	}
+	if v.LimitsWindows == nil {
+		v.LimitsWindows = []pool.Window{}
+	}
+	if !s.LimitsFetchedAt.IsZero() {
+		v.LimitsFetchedAt = s.LimitsFetchedAt.Unix()
+		v.LimitsStale = time.Since(s.LimitsFetchedAt) > 10*time.Minute || s.LimitsError != ""
 	}
 	if cooldown {
 		v.CooldownSeconds = int64(time.Until(s.CooldownUntil).Seconds()) + 1
@@ -67,7 +82,7 @@ func (h *Handler) handleAccountsList(w http.ResponseWriter, _ *http.Request) {
 	for _, s := range stats {
 		items = append(items, statToView(s))
 	}
-	writeOK(w, map[string]any{"items": items})
+	writeOK(w, map[string]any{"items": items, "allowed_models": h.pool.ModelAllowlist()})
 }
 
 // handleAccountPatch 启用/停用账号：{"enabled": bool}。

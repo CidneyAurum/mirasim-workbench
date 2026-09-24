@@ -59,8 +59,8 @@ func TestWorstUsedRatio(t *testing.T) {
 	if nilLimits.WorstUsedRatio() != 0 {
 		t.Fatal("无快照应为 0")
 	}
-	if (&Limits{Windows: []Window{{Used: 5, Budget: 0}}}).WorstUsedRatio() != 1 {
-		t.Fatal("budget=0 且有用量应视为打满")
+	if (&Limits{Windows: []Window{{Used: 5, Budget: 0}}}).WorstUsedRatio() != 0 {
+		t.Fatal("budget=0 is unlimited in the official client")
 	}
 	if (&Limits{}).WorstUsedRatio() != 0 {
 		t.Fatal("无窗口应为 0")

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -88,7 +89,8 @@ func TestMasterKeyAutoGenerate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
+	// Windows uses ACLs, not POSIX mode bits (os.Stat reports 0666).
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
 		t.Fatalf("master.key 权限应为 0600: %o", info.Mode().Perm())
 	}
 	// 再次加载应读出同一把

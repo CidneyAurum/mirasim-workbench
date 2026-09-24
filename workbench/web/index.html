@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Mirasim 本地工作台</title>
+  <link rel="icon" href="/mark.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar glass">
+    <div class="brand"><img src="/mark.svg" alt="" width="38" height="38"><div><strong>Mirasim<span class="beta">LOCAL</span></strong><small>本地工作台</small></div></div>
+    <div class="service-pill" id="side-status"><i></i><span>正在连接本地网关…</span></div>
+    <div class="nav-label">工作空间</div>
+    <nav id="nav" aria-label="主导航">
+      <button data-page="overview" class="active"><span data-icon="grid"></span>概览</button>
+      <button data-page="accounts"><span data-icon="users"></span>账号池<span class="nav-count" id="account-count">—</span></button>
+      <button data-page="keys"><span data-icon="key"></span>API Keys</button>
+      <button data-page="models"><span data-icon="cpu"></span>模型目录</button>
+      <button data-page="playground"><span data-icon="terminal"></span>调试台</button>
+      <button data-page="usage"><span data-icon="chart"></span>用量记录</button>
+    </nav>
+    <div class="side-bottom">
+      <nav><button data-page="settings"><span data-icon="settings"></span>设置与日志</button></nav>
+      <div class="local-note"><span data-icon="shield"></span><div>仅在这台电脑上运行<small>数据保存在本地 · v1.0.2</small></div></div>
+      <button class="source-link" id="source-link">Essaim8 / mirasim2api <span>↗</span></button>
+    </div>
+  </aside>
+  <main>
+    <header class="topbar">
+      <div><div class="eyebrow">MIRASIM WORKSPACE</div><h1 id="page-title">概览</h1><p id="page-sub">你的模型网关，一目了然。</p></div>
+      <div class="actions"><button class="btn icon" id="refresh" title="刷新数据" aria-label="刷新数据"><span data-icon="refresh"></span></button><button class="btn" id="service"><span data-icon="power"></span><span>启动网关</span></button><button class="btn primary" data-action="add-account"><span data-icon="plus"></span>添加账号</button></div>
+    </header>
+    <div id="notice" class="notice" role="status" hidden></div>
+    <div class="content">
+      <section id="page-overview" class="page">
+        <div class="welcome glass"><div><div class="eyebrow accent">LOCAL MODEL GATEWAY</div><h2>从一个账号开始，连接你的 AI 工具。</h2><p>集中管理 Mirasim 订阅账号，为本地客户端提供统一的模型接口。</p><div class="welcome-tags"><span>多账号调度</span><span>三种接口协议</span><span>SQLite 本地存储</span></div></div><div class="orbit" aria-hidden="true"><div class="orbit-ring"></div><img src="/mark.svg" alt="" width="70" height="70"><span class="orbit-dot"></span></div></div>
+        <div class="stats" id="stats"></div>
+        <div class="grid-2">
+          <article class="panel glass"><div class="panel-head"><h2>接入信息</h2><span class="chip">LOOPBACK ONLY</span></div><div id="endpoints"></div><p class="hint">Base URL 用于客户端配置；实际可用协议取决于模型家族。</p><button class="btn subtle" data-page="keys">管理 API Key <span>→</span></button></article>
+          <article class="panel glass"><div class="panel-head"><h2>开始使用</h2><span class="hint">3 个步骤</span></div><div class="steps"><button data-action="add-account"><b>01</b><div>添加 Mirasim 账号<small>浏览器授权、邮箱验证码或 Refresh Token</small></div><span>↗</span></button><button data-page="keys"><b>02</b><div>创建一个 API Key<small>独立密钥、并发限制与模型白名单</small></div><span>→</span></button><button data-page="playground"><b>03</b><div>发送第一条测试请求<small>按模型协议路由，实时查看流式输出</small></div><span>→</span></button></div></article>
+        </div>
+        <article class="panel glass"><div class="panel-head"><h2>模型使用情况</h2><span class="hint">最近 7 天 · 按费用排序</span><button class="text-btn" data-page="usage">查看记录 →</button></div><div id="top-models"></div></article>
+      </section>
+      <section id="page-accounts" class="page" hidden>
+        <div class="section-intro"><div><h2>订阅账号池</h2><p>账号和额度直接读取 Mir 网关，凭据由原项目加密存储。</p></div><button class="btn" id="refresh-accounts">刷新账号列表</button></div>
+        <div id="accounts-list" class="account-grid"></div>
+      </section>
+      <section id="page-keys" class="page" hidden>
+        <article class="panel glass"><div class="panel-head"><div><h2>客户端访问密钥</h2><p class="hint">明文仅在创建时展示一次。删除后，使用该密钥的客户端将无法访问。</p></div><button class="btn primary" id="create-key"><span data-icon="plus"></span>创建密钥</button></div><div id="keys-table" class="table-wrap"></div></article>
+      </section>
+      <section id="page-models" class="page" hidden>
+        <div class="section-intro"><div><h2>模型与协议</h2><p id="models-source">正在读取账号套餐与可用模型…</p></div><button class="btn" id="load-models">从网关获取模型</button></div>
+        <label class="search"><span data-icon="search"></span><input id="model-search" placeholder="搜索模型名称…" aria-label="搜索模型"></label>
+        <div class="model-grid" id="models-list"></div>
+      </section>
+      <section id="page-playground" class="page" hidden>
+        <div class="playground-grid">
+          <article class="panel glass play-config"><div class="panel-head"><h2>请求配置</h2><span class="chip">STREAM</span></div>
+            <label class="field">API Key<input type="password" id="test-key" placeholder="sk-…" autocomplete="off" spellcheck="false"></label><p class="hint">只保留在当前窗口内存中，不写入浏览器存储。</p>
+            <label class="field">模型<input id="test-model" list="model-options" value="claude-sonnet-5" spellcheck="false"><datalist id="model-options"></datalist></label>
+            <label class="field">接口协议<select id="test-protocol"><option value="auto">自动选择（推荐）</option><option value="messages">Anthropic Messages</option><option value="responses">OpenAI Responses</option><option value="chat/completions">OpenAI Chat Completions</option></select></label>
+            <div class="protocol-hint" id="protocol-hint"></div>
+            <label class="field">最大输出 Tokens<input type="number" id="test-max" min="1" max="32768" value="512"></label>
+            <p class="hint">每次发送为独立请求。实际调用会使用你的订阅额度。</p>
+          </article>
+          <article class="panel glass conversation"><div class="panel-head"><h2>接口测试</h2><span class="hint" id="request-status">等待发送</span><button class="text-btn" id="clear-test">清空</button></div><div class="answer-area"><div class="answer-placeholder" id="answer-placeholder"><span data-icon="terminal"></span><h3>让连接真正跑起来</h3><p>填入 API Key，选择模型，然后发送一条消息。</p></div><pre id="answer" hidden></pre></div><div class="composer"><label for="prompt" class="sr-only">测试消息</label><textarea id="prompt" rows="3" placeholder="输入测试消息，例如：用一句话介绍你自己。"></textarea><div class="composer-foot"><span class="hint">Ctrl / ⌘ + Enter 发送</span><div class="actions"><button class="btn danger" id="cancel-test" hidden>停止生成</button><button class="btn primary" id="send-test"><span data-icon="send"></span>发送请求</button></div></div></div></article>
+        </div>
+      </section>
+      <section id="page-usage" class="page" hidden>
+        <article class="panel glass"><div class="panel-head"><h2>请求用量</h2><div class="actions"><select id="usage-since" aria-label="用量时间范围"><option value="24h">最近 24 小时</option><option value="168h">最近 7 天</option><option value="">全部记录</option></select><input id="usage-model" placeholder="模型名称（精确匹配）" aria-label="按模型筛选"><button class="btn" id="usage-search">查询</button></div></div><div id="usage-table" class="table-wrap"></div><div class="pagination"><span class="hint" id="usage-count"></span><div class="actions"><button class="btn" id="usage-prev">上一页</button><button class="btn" id="usage-next">下一页</button></div></div></article>
+      </section>
+      <section id="page-settings" class="page" hidden>
+        <article class="panel glass"><div class="panel-head"><div><h2>网关设置</h2><p class="hint">保存后即时生效；留空恢复默认。数据库设置优先。</p></div><button class="btn primary" id="save-settings">保存设置</button></div><form id="settings-form" class="settings-grid"></form></article>
+        <article class="panel glass"><div class="panel-head"><h2>本地服务</h2><button class="btn danger" id="stop-service">停止网关</button></div><div id="local-info" class="info-grid"></div><div class="actions"><button class="btn" data-folder="">打开安装目录</button><button class="btn" data-folder="data">打开数据目录</button><button class="btn" data-folder="logs">打开日志目录</button></div><p class="hint">关闭工作台窗口不会停止网关。备份时请先停止网关，再完整备份 data 文件夹（尤其是 master.key）；不要分享此文件夹。</p></article>
+        <article class="panel glass"><div class="panel-head"><h2>运行日志</h2><select id="log-kind" aria-label="日志类型"><option value="gateway">网关日志</option><option value="workbench">工作台日志</option></select><button class="text-btn" id="refresh-logs">刷新日志</button><span class="hint">最近 64 KB</span></div><pre class="log" id="logs">等待加载…</pre></article>
+      </section>
+      <footer><span>Mirasim · 本地模型工作台</span><span id="updated-at">正在加载</span></footer>
+    </div>
+  </main>
+</div>
+<dialog id="modal"><div class="dialog-head"><h2 id="modal-title"></h2><button class="btn icon" id="close-modal" aria-label="关闭对话框">×</button></div><div id="modal-body"></div></dialog>
+<div id="toasts" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

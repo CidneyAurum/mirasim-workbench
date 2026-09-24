@@ -17,3 +17,22 @@ mirasim2api
 docs/
 TODO.md
 README.md
+
+# Windows releases and local credentials must not enter a build context.
+dist/
+backups/
+logs/
+auths/
+.tools/
+.gocache/
+*.exe
+*.ico
+*.dpapi
+*.key
+*.pem
+*.pfx
+*.log
+*.zip
+*.bak
+.env
+.env.*

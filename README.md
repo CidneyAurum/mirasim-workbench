@@ -1,147 +1,90 @@
-# mirasim2api
+# Mirasim Workbench
 
-以 [sub2api](https://github.com/Wei-Shaw/sub2api) 的产品架构为蓝本（多账号池、API Key 分发、
-精确计费、智能调度、并发控制、管理后台），上游适配 **Mirasim** 订阅额度的模型网关。
+Windows x64 本地可视化工作台，基于 [Essaim8/mirasim2api](https://github.com/Essaim8/mirasim2api)。
+深色独立窗口、账号池、API Key、周额度、流式调试与网关管理，解压后双击启动。
 
-单一 Go 二进制交付，管理后台内嵌，SQLite 持久化，无外部中间件依赖。
+> 发布包不包含任何账号、令牌、数据库、日志或个人配置。上游未声明开源许可证，使用与再分发前请阅读 [来源与许可说明](THIRD_PARTY_NOTICES.md)。
 
-> ⚠️ **免责声明**：本项目仅供技术学习与研究。使用可能违反 Mirasim 及上游（Anthropic/OpenAI 等）
-> 的服务条款，风险由使用者自负；不得用于商业运营。
+## 在自己的电脑上部署
 
----
+1. 从 [Releases](https://github.com/CidneyAurum/mirasim-workbench/releases) 下载 `mirasim-workbench-v1.0.2-windows-amd64.zip`。
+2. 完整解压到当前用户有写入权限的目录。不要在 ZIP 预览中直接运行，也不要放在需要管理员权限的系统目录。
+3. 双击 `mirasim-workbench.exe`，或 `start-workbench.vbs`。
+4. 在「账号池」登录自己的 Mirasim 账号，在「API Keys」创建并保存访问密钥。
+5. 使用「调试台」测试，或把下方地址配置到客户端。
 
-## 功能特性
+运行包**不需要安装 Go、Node、Python、Docker 或数据库**。需要 Windows 10/11 x64 与 [Microsoft WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。WebView2 缺失时工作台会尝试使用默认浏览器打开本地页面。
 
-- **多账号池**：GitHub/Google OAuth（loopback 自动回调或粘贴回调链接）+ 邮箱验证码 + 直接粘贴 refresh token 三种加号方式；refresh token AES-256-GCM 加密落盘，轮换自动回写
-- **API Key 分发**：`sk-` 密钥（只存 sha256），每 Key 可配并发上限 / 每分钟请求数 / 模型白名单 / 过期时间
-- **精确计费**：从响应（含 SSE 流末帧）解析 token 用量，模型价格表 × 倍率计费，写用量日志并累加到 Key
-- **智能调度**：额度加权随机选号 + 会话粘性（prompt cache 友好）+ 出错指数退避熔断
-- **并发与限流**：每账号并发信号量 + 每 Key 并发槽 + 每 Key 滑动窗口限流
-- **协议兼容**：实现 Mirasim 的 mrs-sig-v2 签名与 mrs-seal-v1 密封，见 `docs/PROTOCOL.md`
-- **管理后台**：内嵌单页 WebUI，仪表盘 / 账号池 / API Keys / 用量日志 / 设置，无需前端工具链
+官方 Mirasim 客户端不是网关运行的必需依赖；如果已安装，工作台会显示打开入口，不会读取其登录凭据。
 
-## 支持的端点
-
-| 端点 | 模型家族 |
+| 配置 | 默认值 |
 |---|---|
-| `POST /v1/messages` | `claude-*`、`kimi-k3`、`deepseek-*`、`glm-*` |
-| `POST /v1/responses` | `gpt-*`（仅流式）、第三方模型 |
-| `POST /v1/chat/completions` | `kimi-k3`、`deepseek-*`、`glm-*` |
-| `GET /v1/models` | 模型清单 |
-| `GET /health` | 健康检查（账号池摘要） |
+| 工作台 | `http://127.0.0.1:7901` |
+| 客户端 Base URL | `http://127.0.0.1:8787/v1` |
+| Kimi / DeepSeek / GLM 接口 | `/v1/chat/completions` |
+| Go 套餐模型 | `kimi-k3`、`deepseek-flash`、`glm-5.3-flash` |
+| API Key | 由使用者在本机工作台创建 |
 
-> 模型家族路由遵循 Mirasim relay 实测约束：`claude-*` 仅 `/v1/messages`，`gpt-*` 仅 `/v1/responses`，
-> 第三方模型三个端点皆可。详见 `docs/PROTOCOL.md`。
+Go 套餐模型目录不混入 Claude、GPT 或 DeepSeek V4。其他 / 混合套餐由上游实际权限决定，通用参考清单不等于全部已授权。
 
-同时注册裸路径（`POST /messages` 等，无 `/v1` 前缀），方便不改 base_url 的客户端。
+## 功能
 
----
+- GitHub / Google 浏览器授权、邮箱验证码、Refresh Token 与完整回调恢复。
+- 配额窗口：已用 / 总点数、百分比、剩余量、重置时间与数据更新时间。
+- 账号启停、额度刷新；API Key 并发、RPM、模型白名单和到期时间。
+- Chat Completions / Messages / Responses 流式调试，按模型家族选择协议。
+- 用量与计费记录、运行日志、本地网关启停和重启。
+- 仅监听回环地址；账号加密存储，管理密码由 Windows DPAPI 保护。
 
-## 快速开始
+已修复上游 OAuth 回调过早断开连接的问题，授权后可正常显示成功页面，并清除地址栏中的令牌。
 
-### 方式一：本地运行
+## 日常使用
 
-需要 Go 1.27+。
+关闭桌面窗口会保留后台网关。通过「设置与日志 → 停止网关」或 `stop-workbench.vbs` 停止服务。启动 / 重启不会清空账号。
 
-```bash
-go build -o mirasim2api ./cmd/server
-ADMIN_PASSWORD=your-strong-password ./mirasim2api
+数据在安装目录下的 `data/`，日志在 `logs/`。首次启动会为当前 Windows 用户独立生成凭据，**不要把自己运行过的安装目录打包分享**。备份时先停止网关，然后完整备份数据库及 `master.key`。详情见 [使用说明](WORKBENCH.md) 和 [安全说明](SECURITY.md)。
+
+端口已被占用时，可在终端指定另一组本机端口：
+
+```powershell
+.\mirasim-workbench.exe -addr 127.0.0.1:7902 -gateway-port 8788
 ```
 
-打开 `http://127.0.0.1:8787/admin/`，用上面设置的密码登录。
+使用自定义端口时，请在对应工作台页面中停止服务；默认停止脚本仅针对 7901 端口。
 
-### 方式二：Docker Compose
+## 源码构建
 
-```bash
-cd deploy
-cp .env.example .env
-# 编辑 .env：至少设置 ADMIN_PASSWORD 与 MASTER_KEY
-docker compose up -d --build
+需要 Go 1.27.1+。Node 仅用于可选的前端单元测试，不是运行依赖。
+
+```powershell
+.\tools\build.ps1 -GoPath '完整路径\go.exe'
+.\tools\create-shortcut.ps1
 ```
 
-数据持久化在名为 `mirasim-data` 的 volume（`/app/data`）。
+构建到其他目录：添加 `-OutputDirectory '输出目录'`。编译使用 `-trimpath -buildvcs=false`，移除本机源码路径和工作区版本元数据。
 
-### 添加账号
+运行测试：
 
-管理后台 →「账号池」→ 右上角三种方式任选：
-
-- **OAuth 登录**：选 GitHub/Google，自动在本机 127.0.0.1 起临时端口接收回调（推荐，全自动）；
-  或选手动模式，授权后把浏览器地址栏的完整回调链接粘贴回来
-- **邮箱验证码**：输入邮箱收码，填码即入池
-- **粘贴 Token**：直接粘贴一个有效的 refresh token（三段 JWT）
-
-### 创建 API Key
-
-管理后台 →「API Keys」→「新建 Key」，可设并发 / RPM / 模型白名单 / 过期时间。
-**明文密钥只在创建时显示一次**，请立即保存。
-
-### 调用模型
-
-```bash
-curl http://127.0.0.1:8787/v1/messages \
-  -H "Authorization: Bearer sk-你的key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet-5",
-    "max_tokens": 256,
-    "messages": [{"role":"user","content":"你好"}]
-  }'
-```
-
-流式：`"stream": true`，网关逐行透传 SSE 并从流中解析用量计费。
-
----
-
-## 配置（环境变量）
-
-| 变量 | 默认 | 说明 |
-|---|---|---|
-| `PORT` / `HOST` | `8787` / `0.0.0.0` | 监听地址 |
-| `DATA_DIR` | `./data` | SQLite 与 master.key 目录 |
-| `MASTER_KEY` | 自动生成存 `DATA_DIR/master.key`（0600） | 64 位 hex，加密 refresh token 与设备私钥；**丢失则已存凭据解不开** |
-| `ADMIN_PASSWORD` | 空 | 管理后台密码；空且绑定非 loopback 时**拒绝启动** |
-| `GATEWAY_KEY_REQUIRED` | `true` | 模型请求是否必须带 sk- key |
-| `CLAUDE_CLOAK_MODE` | `relaxed` | `relaxed` / `strict` |
-| `CAPACITY_RETRIES` / `CAPACITY_BACKOFF_MS` | `2` / `1200` | 503 容量重试次数 / 退避毫秒 |
-| `ACCOUNT_MAX_CONCURRENCY` | `5` | 每账号上游并发槽上限 |
-| `UPSTREAM_PROXY` | 空 | 出站 HTTP CONNECT 代理 |
-| `RELAY_URL` / `AUTH_URL` | 官方地址 | 上游覆盖 |
-| `MIRASIM_CLIENT_VERSION` | `0.0.322` | 参与签名的客户端版本 |
-| `MIRASIM_SEAL_PUBKEY` | 内置值 | relay 密封公钥 |
-
-标记「可热更」的设置（代理 / 伪装模式 / 重试参数 / 价格表 / 倍率）也可在管理后台「设置」页在线修改，
-数据库值优先于环境变量。
-
----
-
-## 项目结构
-
-```
-cmd/server/          入口：配置加载、DB 初始化、HTTP 服务装配
-internal/config/     环境变量配置
-internal/mirasim/    协议层：设备身份、mrs-sig-v2 签名、mrs-seal-v1 密封、token 刷新、ticket 申领
-internal/store/      SQLite：accounts / api_keys / usage_logs / settings / device
-internal/pool/       账号池：额度加权选号、会话粘性、熔断冷却、配额轮询
-internal/gateway/    模型网关：请求规范化、鉴权、并发限流、转发、SSE 透传、用量解析
-internal/billing/    用量记录与费用计算
-internal/admin/      管理 API（会话认证）
-internal/runtimecfg/ 运行时设置（数据库优先，环境变量兜底）
-web/                 管理后台静态资源（embed）
-deploy/              Dockerfile、docker-compose.yml、.env.example
-docs/                DESIGN.md（设计）、PROTOCOL.md（协议规格）
-```
-
-## 安全说明
-
-- refresh token 与设备私钥一律 AES-256-GCM 加密落盘
-- API Key 只存 sha256，展示用 `sk-...abcd` 截断形式
-- 管理会话用 HttpOnly Cookie（HMAC 签名 token，8 小时有效）
-- 未设 `ADMIN_PASSWORD` 且绑定非 loopback 地址时拒绝启动
-
-## 测试
-
-```bash
+```powershell
 go test ./...
+go vet ./...
+Push-Location workbench
+go test ./...
+node --test web/protocol.test.mjs web/quota.test.mjs
+Pop-Location
 ```
 
-各协议、规范化、池选号、计费、存储模块均有单元测试。
+打包为全新、无账号状态的源码及 Windows ZIP：
+
+```powershell
+.\tools\package.ps1 -GoPath '完整路径\go.exe'
+```
+
+脚本只从源码白名单导出，不复制运行目录数据；重新编译程序，并生成 ZIP、SHA-256 和脱敏检查报告。
+
+## 来源和限制
+
+上游基准：`a6181c9f2f3d0f51c91c12f3163a872113eb304f`，原始文档保留在 [UPSTREAM_README](docs/UPSTREAM_README.md)。
+详见 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES.md)。
+
+仅供技术学习研究。使用可能违反 Mirasim 或模型提供方的服务条款，不承诺模型可用性或配额。本项目未添加重新许可上游代码的开源许可证，也不构成商用或再分发授权。公开仓库并不改变这一点。
